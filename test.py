@@ -5,9 +5,12 @@ from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
+from PIL import Image
+from python_anticaptcha import AnticaptchaClient, ImageToTextTask
+
 import csv
+import time
 def get_basic_information(driver,url):
-    
     driver.get(url)
     wait = WebDriverWait(driver,60)
     tag = wait.until(EC.presence_of_element_located((By.XPATH,"//*[@id='productDetails_techSpec_section_1']")))
@@ -96,7 +99,40 @@ def parse_page(driver,brand,asin,item_number, url):
         row_record['Date'] = Date
         result.append(row_record)
     return result
-    
+def solve_captcha(driver):
+    captcha_fn = "captcha.png"
+    element = driver.find_element(By.TAG_NAME, "img") # element name containing the catcha image
+    location = element.location
+    size = element.size
+    driver.save_screenshot("temp.png")
+
+    x = location['x']
+    y = location['y']
+    w = size['width']
+    h = size['height']
+    width = x + w
+    height = y + h
+
+    im = Image.open('temp.png')
+    im = im.crop((int(x), int(y), int(width), int(height)))
+    im.save(captcha_fn)
+
+    # request anti-captcha service to decode the captcha
+
+    api_key = '' # api key -> https://anti-captcha.com/
+    captcha_fp = open(captcha_fn, 'rb')
+    client = AnticaptchaClient(api_key)
+    task = ImageToTextTask(captcha_fp)
+    job = client.createTask(task)
+    job.join()
+    text = job.get_captcha_text()    
+    print(text)
+    input_ele = driver.find_element(By.ID,'captchacharacters')
+    input_ele.send_keys(text)
+    time.sleep(1)
+    submit_btn = driver.find_element(By.TAG_NAME,'button')
+    submit_btn.click()
+    time.sleep(1)
 if __name__ == '__main__':
     options = Options()
     options.add_argument('--headless')
@@ -104,6 +140,12 @@ if __name__ == '__main__':
     options.add_argument('--disable-dev-shm-usage')
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
     start_url = 'https://www.amazon.com/iSpring-ICEK-Connection-Installation-Reverse/dp/B008H71Q4C?th=1'
+    driver.get(start_url)
+    # print('Solving Recaptcha...')
+    # solve_captcha(driver)
+   
+    
+    
     itemlist =  start_url.split('/')
     page_id =  itemlist[-1].split('?')[0]
 
